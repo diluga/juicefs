@@ -29,6 +29,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/erikdubbelboer/gspt"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
@@ -171,6 +172,16 @@ func mount(c *cli.Context) error {
 		Subdir:      c.String("subdir"),
 		MaxDeletes:  c.Int("max-deletes"),
 	}
+	var addrIndex int
+	for i, a := range os.Args {
+		if a == addr {
+			addrIndex = i
+			break
+		}
+	}
+	if !strings.Contains(addr, "://") {
+		addr = "redis://" + addr
+	}
 	m := meta.NewClient(addr, metaConf)
 	format, err := m.Load()
 	if err != nil {
@@ -261,11 +272,7 @@ func mount(c *cli.Context) error {
 			path := addr[len(sqliteScheme):]
 			path2, err := filepath.Abs(path)
 			if err == nil && path2 != path {
-				for i, a := range os.Args {
-					if a == addr {
-						os.Args[i] = sqliteScheme + path2
-					}
-				}
+				os.Args[addrIndex] = sqliteScheme + path2
 			}
 		}
 		// The default log to syslog is only in daemon mode.
@@ -282,6 +289,8 @@ func mount(c *cli.Context) error {
 	if err != nil {
 		logger.Fatalf("new session: %s", err)
 	}
+	os.Args[addrIndex] = utils.RemovePassword(addr)
+	gspt.SetProcTitle(strings.Join(os.Args, " "))
 	installHandler(mp)
 	v := vfs.NewVFS(conf, m, store)
 	metricsAddr := exposeMetrics(m, c)
